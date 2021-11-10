@@ -5,10 +5,21 @@ SHELL = /bin/sh
 
 LULESH_EXEC = lulesh2.0
 
+#AIFM runtime configuration
+AIFM_PATH=../
+SHENANGO_PATH=$(AIFM_PATH)/../shenango
+include $(SHENANGO_PATH)/shared.mk
+
+librt_libs = $(SHENANGO_PATH)/bindings/cc/librt++.a
+INC += -I$(SHENANGO_PATH)/bindings/cc -I$(AIFM_PATH)/inc -I$(SHENANGO_PATH)/ksched
+
+CXXFLAGS := $(filter-out -std=gnu++17,$(CXXFLAGS))
+override CXXFLAGS += -std=gnu++2a -fconcepts -Wno-unused-function -mcmodel=medium
+
 #MPI_INC = /opt/local/include/openmpi
 #MPI_LIB = /opt/local/lib
 
-SERCXX = g++ -DUSE_MPI=0
+SERCXX = g++-9 -DUSE_MPI=0
 #MPICXX = mpig++ -DUSE_MPI=1
 CXX = $(SERCXX)
 
@@ -25,8 +36,8 @@ OBJECTS2.0 = $(SOURCES2.0:.cc=.o)
 #LDFLAGS = -g -O3 -fopenmp
 
 #Below are reasonable default flags for a serial build
-CXXFLAGS = -g -O3 -I. -Wall
-LDFLAGS = -g -O3 
+CXXFLAGS += -g -O3 -I. $(INC) -Wall
+LDFLAGS += -g -O3 
 
 #common places you might find silo on the Livermore machines.
 #SILO_INCDIR = /opt/local/include
@@ -50,7 +61,7 @@ all: $(LULESH_EXEC)
 
 $(LULESH_EXEC): $(OBJECTS2.0)
 	@echo "Linking"
-	$(CXX) $(OBJECTS2.0) $(LDFLAGS) -lm -o $@
+	$(CXX) $(OBJECTS2.0) $(librt_libs) $(LDFLAGS) -lm -o $@
 
 clean:
 	/bin/rm -f *.o *~ $(OBJECTS) $(LULESH_EXEC)

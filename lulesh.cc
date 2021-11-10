@@ -144,6 +144,15 @@ Additional BSD Notice
 
 */
 
+extern "C" {
+#include <runtime/runtime.h>
+}
+
+#include "array.hpp"
+#include "device.hpp"
+#include "helpers.hpp"
+#include "manager.hpp"
+
 #include <climits>
 #include <vector>
 #include <math.h>
@@ -2646,9 +2655,11 @@ void LagrangeLeapFrog(Domain& domain)
 
 
 /******************************************/
-
-int main(int argc, char *argv[])
+int argc;
+std::string ip_addr_port;
+void _main(void *arg)
 {
+   char **argv = static_cast<char **>(arg);
    Domain *locDom ;
    int numRanks ;
    int myRank ;
@@ -2788,5 +2799,30 @@ int main(int argc, char *argv[])
    MPI_Finalize() ;
 #endif
 
-   return 0 ;
+   //return 0 ;
+}
+
+int main(int _argc, char *argv[]) {
+  int ret;
+
+  if (_argc < 3) {
+    std::cerr << "usage: [cfg_file] [ip_addr:port]" << std::endl;
+    return -EINVAL;
+  }
+
+  char conf_path[strlen(argv[1]) + 1];
+  strcpy(conf_path, argv[1]);
+  ip_addr_port.assign(argv[2]);
+  for (int i = 3; i < _argc; i++) {
+    argv[i - 1] = argv[i];
+  }
+  argc = _argc - 2;
+
+  ret = runtime_init(conf_path, _main, argv);
+  if (ret) {
+    std::cerr << "failed to start runtime" << std::endl;
+    return ret;
+  }
+
+  return 0;
 }
