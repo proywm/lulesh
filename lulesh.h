@@ -240,14 +240,14 @@ class Domain {
    void AllocateGradients(Int_t numElem, Int_t allElem)
    {
       // Position gradients
-      m_delx_xi   = Allocate<Real_t>(numElem) ;
-      m_delx_eta  = Allocate<Real_t>(numElem) ;
-      m_delx_zeta = Allocate<Real_t>(numElem) ;
+      m_delx_xi   = AllocateFM<Real_t>(numElem) ;
+      m_delx_eta  = AllocateFM<Real_t>(numElem) ;
+      m_delx_zeta = AllocateFM<Real_t>(numElem) ;
 
       // Velocity gradients
-      m_delv_xi   = Allocate<Real_t>(allElem) ;
-      m_delv_eta  = Allocate<Real_t>(allElem);
-      m_delv_zeta = Allocate<Real_t>(allElem) ;
+      m_delv_xi   = AllocateFM<Real_t>(allElem) ;
+      m_delv_eta  = AllocateFM<Real_t>(allElem);
+      m_delv_zeta = AllocateFM<Real_t>(allElem) ;
    }
 
    void DeallocateGradients()
@@ -263,9 +263,9 @@ class Domain {
 
    void AllocateStrains(Int_t numElem)
    {
-      m_dxx = Allocate<Real_t>(numElem) ;
-      m_dyy = Allocate<Real_t>(numElem) ;
-      m_dzz = Allocate<Real_t>(numElem) ;
+      m_dxx = AllocateFM<Real_t>(numElem) ;
+      m_dyy = AllocateFM<Real_t>(numElem) ;
+      m_dzz = AllocateFM<Real_t>(numElem) ;
    }
 
    void DeallocateStrains()
@@ -335,22 +335,22 @@ class Domain {
    Int_t&  elemBC(Index_t idx) { return m_elemBC[idx] ; }
 
    // Principal strains - temporary
-   Real_t& dxx(Index_t idx)  { return m_dxx[idx] ; }
-   Real_t& dyy(Index_t idx)  { return m_dyy[idx] ; }
-   Real_t& dzz(Index_t idx)  { return m_dzz[idx] ; }
+   Real_t& dxx(Index_t idx)  { DerefScope scope;  return m_dxx->at_mut(scope, idx) ; }
+   Real_t& dyy(Index_t idx)  { DerefScope scope;  return m_dyy->at_mut(scope, idx) ; }
+   Real_t& dzz(Index_t idx)  { DerefScope scope;  return m_dzz->at_mut(scope, idx) ; }
 
    // New relative volume - temporary
-   Real_t& vnew(Index_t idx)  { return m_vnew[idx] ; }
+   Real_t& vnew(Index_t idx)  { DerefScope scope;  return m_vnew[idx] ; }
 
    // Velocity gradient - temporary
-   Real_t& delv_xi(Index_t idx)    { return m_delv_xi[idx] ; }
-   Real_t& delv_eta(Index_t idx)   { return m_delv_eta[idx] ; }
-   Real_t& delv_zeta(Index_t idx)  { return m_delv_zeta[idx] ; }
+   Real_t& delv_xi(Index_t idx)    { DerefScope scope;  return m_delv_xi->at_mut(scope, idx) ; }
+   Real_t& delv_eta(Index_t idx)   { DerefScope scope;  return m_delv_eta->at_mut(scope, idx) ; }
+   Real_t& delv_zeta(Index_t idx)  { DerefScope scope;  return m_delv_zeta->at_mut(scope, idx) ; }
 
    // Position gradient - temporary
-   Real_t& delx_xi(Index_t idx)    { return m_delx_xi[idx] ; }
-   Real_t& delx_eta(Index_t idx)   { return m_delx_eta[idx] ; }
-   Real_t& delx_zeta(Index_t idx)  { return m_delx_zeta[idx] ; }
+   Real_t& delx_xi(Index_t idx)    { DerefScope scope;  return m_delx_xi->at_mut(scope, idx) ; }
+   Real_t& delx_eta(Index_t idx)   { DerefScope scope;  return m_delx_eta->at_mut(scope, idx) ; }
+   Real_t& delx_zeta(Index_t idx)  { DerefScope scope;  return m_delx_zeta->at_mut(scope, idx) ; }
 
    // Energy
    Real_t& e(Index_t idx)          { return m_e[idx] ; }
@@ -518,17 +518,17 @@ class Domain {
 
    std::vector<Int_t>    m_elemBC ;  /* symmetry/free-surface flags for each elem face */
 
-   Real_t             *m_dxx ;  /* principal strains -- temporary */
-   Real_t             *m_dyy ;
-   Real_t             *m_dzz ;
+   far_memory::DataFrameVector<Real_t>             *m_dxx ;  /* principal strains -- temporary */
+   far_memory::DataFrameVector<Real_t>             *m_dyy ;
+   far_memory::DataFrameVector<Real_t>             *m_dzz ;
 
-   Real_t             *m_delv_xi ;    /* velocity gradient -- temporary */
-   Real_t             *m_delv_eta ;
-   Real_t             *m_delv_zeta ;
+   far_memory::DataFrameVector<Real_t>             *m_delv_xi ;    /* velocity gradient -- temporary */
+   far_memory::DataFrameVector<Real_t>             *m_delv_eta ;
+   far_memory::DataFrameVector<Real_t>             *m_delv_zeta ;
 
-   Real_t             *m_delx_xi ;    /* coordinate gradient -- temporary */
-   Real_t             *m_delx_eta ;
-   Real_t             *m_delx_zeta ;
+   far_memory::DataFrameVector<Real_t>             *m_delx_xi ;    /* coordinate gradient -- temporary */
+   far_memory::DataFrameVector<Real_t>             *m_delx_eta ;
+   far_memory::DataFrameVector<Real_t>             *m_delx_zeta ;
    
    std::vector<Real_t> m_e ;   /* energy */
 

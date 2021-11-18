@@ -295,27 +295,27 @@ void CollectDomainNodesToElemNodes(Domain &domain,
 
 static inline
 void InitStressTermsForElems(Domain &domain,
-                             Real_t *sigxx, Real_t *sigyy, Real_t *sigzz,
+                             far_memory::DataFrameVector<Real_t> *sigxx, far_memory::DataFrameVector<Real_t> *sigyy, far_memory::DataFrameVector<Real_t> *sigzz,
                              Index_t numElem)
 {
+	DerefScope scope;
    //
    // pull in the stresses appropriate to the hydro integration
    //
 
 #pragma omp parallel for firstprivate(numElem)
    for (Index_t i = 0 ; i < numElem ; ++i){
-      sigxx[i] = sigyy[i] = sigzz[i] =  - domain.p(i) - domain.q(i) ;
+      sigxx->at_mut(scope, i) = sigyy->at_mut(scope, i) = sigzz->at_mut(scope, i) =  - domain.p(i) - domain.q(i) ;
    }
 }
 
 /******************************************/
 
 static inline
-void CalcElemShapeFunctionDerivatives( Real_t const x[],
+Real_t CalcElemShapeFunctionDerivatives( Real_t const x[],
                                        Real_t const y[],
                                        Real_t const z[],
-                                       Real_t b[][8],
-                                       Real_t* const volume )
+                                       Real_t b[][8])
 {
   const Real_t x0 = x[0] ;   const Real_t x1 = x[1] ;
   const Real_t x2 = x[2] ;   const Real_t x3 = x[3] ;
@@ -396,7 +396,7 @@ void CalcElemShapeFunctionDerivatives( Real_t const x[],
   b[2][7] = -b[2][1];
 
   /* calculate jacobian determinant (volume) */
-  *volume = Real_t(8.) * ( fjxet * cjxet + fjyet * cjyet + fjzet * cjzet);
+  return Real_t(8.) * ( fjxet * cjxet + fjyet * cjyet + fjzet * cjzet);
 }
 
 /******************************************/
@@ -512,13 +512,29 @@ void SumElemStressesToNodeForces( const Real_t B[][8],
    }
 }
 
+static inline
+void SumElemStressesToNodeForcesFM( const Real_t B[][8],
+                                  const Real_t stress_xx,
+                                  const Real_t stress_yy,
+                                  const Real_t stress_zz,
+                                  far_memory::DataFrameVector<Real_t>* fx, far_memory::DataFrameVector<Real_t> *fy, far_memory::DataFrameVector<Real_t> *fz, Index_t index)
+{
+	DerefScope scope;
+   for(Index_t i = 0; i < 8; i++) {
+      fx->at_mut(scope, index + i) = -( stress_xx * B[0][i] );
+      fy->at_mut(scope, index + i) = -( stress_yy * B[1][i]  );
+      fz->at_mut(scope, index + i) = -( stress_zz * B[2][i] );
+   }
+}
+
 /******************************************/
 
 static inline
 void IntegrateStressForElems( Domain &domain,
-                              Real_t *sigxx, Real_t *sigyy, Real_t *sigzz,
-                              Real_t *determ, Index_t numElem, Index_t numNode)
+                              far_memory::DataFrameVector<Real_t> *sigxx, far_memory::DataFrameVector<Real_t> *sigyy, far_memory::DataFrameVector<Real_t> *sigzz,
+                              far_memory::DataFrameVector<Real_t> *determ, Index_t numElem, Index_t numNode)
 {
+	DerefScope scope;
 #if _OPENMP
    Index_t numthreads = omp_get_max_threads();
 #else
@@ -554,8 +570,8 @@ void IntegrateStressForElems( Domain &domain,
     CollectDomainNodesToElemNodes(domain, elemToNode, x_local, y_local, z_local);
 
     // Volume calculation involves extra work for numerical consistency
-    CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
-                                         B, &determ[k]);
+    determ->at_mut(scope, k) = CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
+                                         B);
 
     CalcElemNodeNormals( B[0] , B[1], B[2],
                           x_local, y_local, z_local );
@@ -563,13 +579,17 @@ void IntegrateStressForElems( Domain &domain,
     if (numthreads > 1) {
        // Eliminate thread writing conflicts at the nodes by giving
        // each element its own copy to write to
-       SumElemStressesToNodeForces( B, sigxx[k], sigyy[k], sigzz[k],
-                                    &fx_elem[k*8],
-                                    &fy_elem[k*8],
-                                    &fz_elem[k*8] ) ;
+//       SumElemStressesToNodeForces( B, sigxx->at(scope, k), sigyy->at(scope, k), sigzz->at(scope, k),
+//                                    &fx_elem[k*8],
+//                                    &fy_elem[k*8],
+//                                    &fz_elem[k*8] ) ;
+       SumElemStressesToNodeForcesFM( B, sigxx->at(scope, k), sigyy->at(scope, k), sigzz->at(scope, k),
+                                    fx_elem,
+                                    fy_elem,
+                                    fz_elem, k*8 ) ;
     }
     else {
-       SumElemStressesToNodeForces( B, sigxx[k], sigyy[k], sigzz[k],
+       SumElemStressesToNodeForces( B, sigxx->at(scope, k), sigyy->at(scope, k), sigzz->at(scope, k),
                                     fx_local, fy_local, fz_local ) ;
 
        // copy nodal force contributions to global force arrray.
@@ -595,9 +615,9 @@ void IntegrateStressForElems( Domain &domain,
         Real_t fz_tmp = Real_t(0.0) ;
         for (Index_t i=0 ; i < count ; ++i) {
            Index_t ielem = cornerList[i] ;
-           fx_tmp += fx_elem[ielem] ;
-           fy_tmp += fy_elem[ielem] ;
-           fz_tmp += fz_elem[ielem] ;
+           fx_tmp += fx_elem->at(scope, ielem) ;
+           fy_tmp += fy_elem->at(scope, ielem) ;
+           fz_tmp += fz_elem->at(scope, ielem) ;
         }
         domain.fx(gnode) = fx_tmp ;
         domain.fy(gnode) = fy_tmp ;
@@ -732,12 +752,13 @@ void CalcElemFBHourglassForce(Real_t *xd, Real_t *yd, Real_t *zd,  Real_t hourga
 
 static inline
 void CalcFBHourglassForceForElems( Domain &domain,
-                                   Real_t *determ,
-                                   Real_t *x8n, Real_t *y8n, Real_t *z8n,
-                                   Real_t *dvdx, Real_t *dvdy, Real_t *dvdz,
+                                   far_memory::DataFrameVector<Real_t> *determ,
+                                   far_memory::DataFrameVector<Real_t> *x8n, far_memory::DataFrameVector<Real_t> *y8n, far_memory::DataFrameVector<Real_t> *z8n,
+                                   far_memory::DataFrameVector<Real_t> *dvdx, far_memory::DataFrameVector<Real_t> *dvdy, far_memory::DataFrameVector<Real_t> *dvdz,
                                    Real_t hourg, Index_t numElem,
                                    Index_t numNode)
 {
+	DerefScope scope;
 
 #if _OPENMP
    Index_t numthreads = omp_get_max_threads();
@@ -814,59 +835,59 @@ void CalcFBHourglassForceForElems( Domain &domain,
 
       const Index_t *elemToNode = domain.nodelist(i2);
       Index_t i3=8*i2;
-      Real_t volinv=Real_t(1.0)/determ[i2];
+      Real_t volinv=Real_t(1.0)/determ->at(scope, i2);
       Real_t ss1, mass1, volume13 ;
       for(Index_t i1=0;i1<4;++i1){
 
          Real_t hourmodx =
-            x8n[i3] * gamma[i1][0] + x8n[i3+1] * gamma[i1][1] +
-            x8n[i3+2] * gamma[i1][2] + x8n[i3+3] * gamma[i1][3] +
-            x8n[i3+4] * gamma[i1][4] + x8n[i3+5] * gamma[i1][5] +
-            x8n[i3+6] * gamma[i1][6] + x8n[i3+7] * gamma[i1][7];
+            x8n->at(scope, i3) * gamma[i1][0] + x8n->at(scope, i3+1) * gamma[i1][1] +
+            x8n->at(scope, i3+2) * gamma[i1][2] + x8n->at(scope, i3+3) * gamma[i1][3] +
+            x8n->at(scope, i3+4) * gamma[i1][4] + x8n->at(scope, i3+5) * gamma[i1][5] +
+            x8n->at(scope, i3+6) * gamma[i1][6] + x8n->at(scope, i3+7) * gamma[i1][7];
 
          Real_t hourmody =
-            y8n[i3] * gamma[i1][0] + y8n[i3+1] * gamma[i1][1] +
-            y8n[i3+2] * gamma[i1][2] + y8n[i3+3] * gamma[i1][3] +
-            y8n[i3+4] * gamma[i1][4] + y8n[i3+5] * gamma[i1][5] +
-            y8n[i3+6] * gamma[i1][6] + y8n[i3+7] * gamma[i1][7];
+            y8n->at(scope, i3) * gamma[i1][0] + y8n->at(scope, i3+1) * gamma[i1][1] +
+            y8n->at(scope, i3+2) * gamma[i1][2] + y8n->at(scope, i3+3) * gamma[i1][3] +
+            y8n->at(scope, i3+4) * gamma[i1][4] + y8n->at(scope, i3+5) * gamma[i1][5] +
+            y8n->at(scope, i3+6) * gamma[i1][6] + y8n->at(scope, i3+7) * gamma[i1][7];
 
          Real_t hourmodz =
-            z8n[i3] * gamma[i1][0] + z8n[i3+1] * gamma[i1][1] +
-            z8n[i3+2] * gamma[i1][2] + z8n[i3+3] * gamma[i1][3] +
-            z8n[i3+4] * gamma[i1][4] + z8n[i3+5] * gamma[i1][5] +
-            z8n[i3+6] * gamma[i1][6] + z8n[i3+7] * gamma[i1][7];
+            z8n->at(scope, i3) * gamma[i1][0] + z8n->at(scope, i3+1) * gamma[i1][1] +
+            z8n->at(scope, i3+2) * gamma[i1][2] + z8n->at(scope, i3+3) * gamma[i1][3] +
+            z8n->at(scope, i3+4) * gamma[i1][4] + z8n->at(scope, i3+5) * gamma[i1][5] +
+            z8n->at(scope, i3+6) * gamma[i1][6] + z8n->at(scope, i3+7) * gamma[i1][7];
 
-         hourgam[0][i1] = gamma[i1][0] -  volinv*(dvdx[i3  ] * hourmodx +
-                                                  dvdy[i3  ] * hourmody +
-                                                  dvdz[i3  ] * hourmodz );
+         hourgam[0][i1] = gamma[i1][0] -  volinv*(dvdx->at(scope, i3) * hourmodx +
+                                                  dvdy->at(scope, i3) * hourmody +
+                                                  dvdz->at(scope, i3) * hourmodz );
 
-         hourgam[1][i1] = gamma[i1][1] -  volinv*(dvdx[i3+1] * hourmodx +
-                                                  dvdy[i3+1] * hourmody +
-                                                  dvdz[i3+1] * hourmodz );
+         hourgam[1][i1] = gamma[i1][1] -  volinv*(dvdx->at(scope, i3+1) * hourmodx +
+                                                  dvdy->at(scope, i3+1) * hourmody +
+                                                  dvdz->at(scope, i3+1) * hourmodz );
 
-         hourgam[2][i1] = gamma[i1][2] -  volinv*(dvdx[i3+2] * hourmodx +
-                                                  dvdy[i3+2] * hourmody +
-                                                  dvdz[i3+2] * hourmodz );
+         hourgam[2][i1] = gamma[i1][2] -  volinv*(dvdx->at(scope, i3+2) * hourmodx +
+                                                  dvdy->at(scope, i3+2) * hourmody +
+                                                  dvdz->at(scope, i3+2) * hourmodz );
 
-         hourgam[3][i1] = gamma[i1][3] -  volinv*(dvdx[i3+3] * hourmodx +
-                                                  dvdy[i3+3] * hourmody +
-                                                  dvdz[i3+3] * hourmodz );
+         hourgam[3][i1] = gamma[i1][3] -  volinv*(dvdx->at(scope, i3+3) * hourmodx +
+                                                  dvdy->at(scope, i3+3) * hourmody +
+                                                  dvdz->at(scope, i3+3) * hourmodz );
 
-         hourgam[4][i1] = gamma[i1][4] -  volinv*(dvdx[i3+4] * hourmodx +
-                                                  dvdy[i3+4] * hourmody +
-                                                  dvdz[i3+4] * hourmodz );
+         hourgam[4][i1] = gamma[i1][4] -  volinv*(dvdx->at(scope, i3+4) * hourmodx +
+                                                  dvdy->at(scope, i3+4) * hourmody +
+                                                  dvdz->at(scope, i3+4) * hourmodz );
 
-         hourgam[5][i1] = gamma[i1][5] -  volinv*(dvdx[i3+5] * hourmodx +
-                                                  dvdy[i3+5] * hourmody +
-                                                  dvdz[i3+5] * hourmodz );
+         hourgam[5][i1] = gamma[i1][5] -  volinv*(dvdx->at(scope, i3+5) * hourmodx +
+                                                  dvdy->at(scope, i3+5) * hourmody +
+                                                  dvdz->at(scope, i3+5) * hourmodz );
 
-         hourgam[6][i1] = gamma[i1][6] -  volinv*(dvdx[i3+6] * hourmodx +
-                                                  dvdy[i3+6] * hourmody +
-                                                  dvdz[i3+6] * hourmodz );
+         hourgam[6][i1] = gamma[i1][6] -  volinv*(dvdx->at(scope, i3+6) * hourmodx +
+                                                  dvdy->at(scope, i3+6) * hourmody +
+                                                  dvdz->at(scope, i3+6) * hourmodz );
 
-         hourgam[7][i1] = gamma[i1][7] -  volinv*(dvdx[i3+7] * hourmodx +
-                                                  dvdy[i3+7] * hourmody +
-                                                  dvdz[i3+7] * hourmodz );
+         hourgam[7][i1] = gamma[i1][7] -  volinv*(dvdx->at(scope, i3+7) * hourmodx +
+                                                  dvdy->at(scope, i3+7) * hourmody +
+                                                  dvdz->at(scope, i3+7) * hourmodz );
 
       }
 
@@ -875,7 +896,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
 
       ss1=domain.ss(i2);
       mass1=domain.elemMass(i2);
-      volume13=CBRT(determ[i2]);
+      volume13=CBRT(determ->at(scope, i2));
 
       Index_t n0si2 = elemToNode[0];
       Index_t n1si2 = elemToNode[1];
@@ -922,35 +943,35 @@ void CalcFBHourglassForceForElems( Domain &domain,
       // With the threaded version, we write into local arrays per elem
       // so we don't have to worry about race conditions
       if (numthreads > 1) {
-         fx_local = &fx_elem[i3] ;
-         fx_local[0] = hgfx[0];
-         fx_local[1] = hgfx[1];
-         fx_local[2] = hgfx[2];
-         fx_local[3] = hgfx[3];
-         fx_local[4] = hgfx[4];
-         fx_local[5] = hgfx[5];
-         fx_local[6] = hgfx[6];
-         fx_local[7] = hgfx[7];
+         //fx_local = &fx_elem[i3] ;
+         fx_elem->at_mut(scope, i3 + 0) = hgfx[0];
+         fx_elem->at_mut(scope, i3 + 1) = hgfx[1];
+         fx_elem->at_mut(scope, i3 + 2) = hgfx[2];
+         fx_elem->at_mut(scope, i3 + 3) = hgfx[3];
+         fx_elem->at_mut(scope, i3 + 4) = hgfx[4];
+         fx_elem->at_mut(scope, i3 + 5) = hgfx[5];
+         fx_elem->at_mut(scope, i3 + 6) = hgfx[6];
+         fx_elem->at_mut(scope, i3 + 7) = hgfx[7];
 
-         fy_local = &fy_elem[i3] ;
-         fy_local[0] = hgfy[0];
-         fy_local[1] = hgfy[1];
-         fy_local[2] = hgfy[2];
-         fy_local[3] = hgfy[3];
-         fy_local[4] = hgfy[4];
-         fy_local[5] = hgfy[5];
-         fy_local[6] = hgfy[6];
-         fy_local[7] = hgfy[7];
+//         fy_local = &fy_elem[i3] ;
+	 fy_elem->at_mut(scope, i3 + 0) = hgfy[0];
+         fy_elem->at_mut(scope, i3 + 1) = hgfy[1];
+         fy_elem->at_mut(scope, i3 + 2) = hgfy[2];
+         fy_elem->at_mut(scope, i3 + 3) = hgfy[3];
+         fy_elem->at_mut(scope, i3 + 4) = hgfy[4];
+         fy_elem->at_mut(scope, i3 + 5) = hgfy[5];
+         fy_elem->at_mut(scope, i3 + 6) = hgfy[6];
+         fy_elem->at_mut(scope, i3 + 7) = hgfy[7];
 
-         fz_local = &fz_elem[i3] ;
-         fz_local[0] = hgfz[0];
-         fz_local[1] = hgfz[1];
-         fz_local[2] = hgfz[2];
-         fz_local[3] = hgfz[3];
-         fz_local[4] = hgfz[4];
-         fz_local[5] = hgfz[5];
-         fz_local[6] = hgfz[6];
-         fz_local[7] = hgfz[7];
+	 fz_elem->at_mut(scope, i3 + 0) = hgfz[0];
+         fz_elem->at_mut(scope, i3 + 1) = hgfz[1];
+         fz_elem->at_mut(scope, i3 + 2) = hgfz[2];
+         fz_elem->at_mut(scope, i3 + 3) = hgfz[3];
+         fz_elem->at_mut(scope, i3 + 4) = hgfz[4];
+         fz_elem->at_mut(scope, i3 + 5) = hgfz[5];
+         fz_elem->at_mut(scope, i3 + 6) = hgfz[6];
+         fz_elem->at_mut(scope, i3 + 7) = hgfz[7];
+
       }
       else {
          domain.fx(n0si2) += hgfx[0];
@@ -999,9 +1020,9 @@ void CalcFBHourglassForceForElems( Domain &domain,
          Real_t fz_tmp = Real_t(0.0) ;
          for (Index_t i=0 ; i < count ; ++i) {
             Index_t ielem = cornerList[i] ;
-            fx_tmp += fx_elem[ielem] ;
-            fy_tmp += fy_elem[ielem] ;
-            fz_tmp += fz_elem[ielem] ;
+            fx_tmp += fx_elem->at(scope, ielem) ;
+            fy_tmp += fy_elem->at(scope, ielem) ;
+            fz_tmp += fz_elem->at(scope, ielem) ;
          }
          domain.fx(gnode) += fx_tmp ;
          domain.fy(gnode) += fy_tmp ;
@@ -1017,8 +1038,9 @@ void CalcFBHourglassForceForElems( Domain &domain,
 
 static inline
 void CalcHourglassControlForElems(Domain& domain,
-                                  Real_t determ[], Real_t hgcoef)
+                                  far_memory::DataFrameVector<Real_t>* determ, Real_t hgcoef)
 {
+	DerefScope scope;
    Index_t numElem = domain.numElem() ;
    Index_t numElem8 = numElem * 8 ;
    far_memory::DataFrameVector<Real_t> *dvdx = AllocateFM<Real_t>(numElem8) ;
@@ -1043,15 +1065,15 @@ void CalcHourglassControlForElems(Domain& domain,
       for(Index_t ii=0;ii<8;++ii){
          Index_t jj=8*i+ii;
 
-         dvdx[jj] = pfx[ii];
-         dvdy[jj] = pfy[ii];
-         dvdz[jj] = pfz[ii];
-         x8n[jj]  = x1[ii];
-         y8n[jj]  = y1[ii];
-         z8n[jj]  = z1[ii];
+         dvdx->at_mut(scope, jj) = pfx[ii];
+         dvdy->at_mut(scope, jj) = pfy[ii];
+         dvdz->at_mut(scope, jj) = pfz[ii];
+         x8n->at_mut(scope, jj)  = x1[ii];
+         y8n->at_mut(scope, jj)  = y1[ii];
+         z8n->at_mut(scope, jj)  = z1[ii];
       }
 
-      determ[i] = domain.volo(i) * domain.v(i);
+      determ->at_mut(scope, i) = domain.volo(i) * domain.v(i);
 
       /* Do a check for negative volumes */
       if ( domain.v(i) <= Real_t(0.0) ) {
@@ -1084,6 +1106,7 @@ void CalcHourglassControlForElems(Domain& domain,
 static inline
 void CalcVolumeForceForElems(Domain& domain)
 {
+	DerefScope scope; 
    Index_t numElem = domain.numElem() ;
    if (numElem != 0) {
       Real_t  hgcoef = domain.hgcoef() ;
@@ -1104,7 +1127,7 @@ void CalcVolumeForceForElems(Domain& domain)
       // check for negative element volume
 #pragma omp parallel for firstprivate(numElem)
       for ( Index_t k=0 ; k<numElem ; ++k ) {
-         if (determ[k] <= Real_t(0.0)) {
+         if (determ->at(scope,k) <= Real_t(0.0)) {
 #if USE_MPI            
             MPI_Abort(MPI_COMM_WORLD, VolumeError) ;
 #else
@@ -1577,8 +1600,8 @@ void CalcKinematicsForElems( Domain &domain,
        z_local[j] -= dt2 * zd_local[j];
     }
 
-    CalcElemShapeFunctionDerivatives( x_local, y_local, z_local,
-                                      B, &detJ );
+    detJ = CalcElemShapeFunctionDerivatives( x_local, y_local, z_local,
+                                      B);
 
     CalcElemVelocityGradient( xd_local, yd_local, zd_local,
                                B, detJ, D );
@@ -2035,60 +2058,62 @@ void CalcQForElems(Domain& domain)
 /******************************************/
 
 static inline
-void CalcPressureForElems(Real_t* p_new, Real_t* bvc,
-                          Real_t* pbvc, Real_t* e_old,
-                          Real_t* compression, Real_t *vnewc,
+void CalcPressureForElems(far_memory::DataFrameVector<Real_t>* p_new, far_memory::DataFrameVector<Real_t>* bvc,
+                          far_memory::DataFrameVector<Real_t>* pbvc, far_memory::DataFrameVector<Real_t>* e_old,
+                          far_memory::DataFrameVector<Real_t>* compression, far_memory::DataFrameVector<Real_t> *vnewc,
                           Real_t pmin,
                           Real_t p_cut, Real_t eosvmax,
                           Index_t length, Index_t *regElemList)
 {
+	DerefScope scope;
 #pragma omp parallel for firstprivate(length)
    for (Index_t i = 0; i < length ; ++i) {
       Real_t c1s = Real_t(2.0)/Real_t(3.0) ;
-      bvc[i] = c1s * (compression[i] + Real_t(1.));
-      pbvc[i] = c1s;
+      bvc->at_mut(scope, i) = c1s * (compression->at(scope, i) + Real_t(1.));
+      pbvc->at_mut(scope, i) = c1s;
    }
 
 #pragma omp parallel for firstprivate(length, pmin, p_cut, eosvmax)
    for (Index_t i = 0 ; i < length ; ++i){
       Index_t ielem = regElemList[i];
       
-      p_new[i] = bvc[i] * e_old[i] ;
+      p_new->at_mut(scope, i) = bvc->at(scope, i) * e_old->at(scope, i) ;
 
-      if    (FABS(p_new[i]) <  p_cut   )
-         p_new[i] = Real_t(0.0) ;
+      if    (FABS(p_new->at(scope, i)) <  p_cut   )
+         p_new->at_mut(scope, i) = Real_t(0.0) ;
 
-      if    ( vnewc[ielem] >= eosvmax ) /* impossible condition here? */
-         p_new[i] = Real_t(0.0) ;
+      if    ( vnewc->at(scope, ielem) >= eosvmax ) /* impossible condition here? */
+         p_new->at_mut(scope, i) = Real_t(0.0) ;
 
-      if    (p_new[i]       <  pmin)
-         p_new[i]   = pmin ;
+      if    (p_new->at(scope, i)       <  pmin)
+         p_new->at_mut(scope, i)   = pmin ;
    }
 }
 
 /******************************************/
 
 static inline
-void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
-                        Real_t* bvc, Real_t* pbvc,
-                        Real_t* p_old, Real_t* e_old, Real_t* q_old,
-                        Real_t* compression, Real_t* compHalfStep,
-                        Real_t* vnewc, Real_t* work, Real_t* delvc, Real_t pmin,
+void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>* p_new, far_memory::DataFrameVector<Real_t>* e_new, far_memory::DataFrameVector<Real_t>* q_new,
+                        far_memory::DataFrameVector<Real_t>* bvc, far_memory::DataFrameVector<Real_t>* pbvc,
+                        far_memory::DataFrameVector<Real_t>* p_old, far_memory::DataFrameVector<Real_t>* e_old, far_memory::DataFrameVector<Real_t>* q_old,
+                        far_memory::DataFrameVector<Real_t>* compression, far_memory::DataFrameVector<Real_t>* compHalfStep,
+                        far_memory::DataFrameVector<Real_t>* vnewc, far_memory::DataFrameVector<Real_t>* work, far_memory::DataFrameVector<Real_t>* delvc, Real_t pmin,
                         Real_t p_cut, Real_t  e_cut, Real_t q_cut, Real_t emin,
-                        Real_t* qq_old, Real_t* ql_old,
+                        far_memory::DataFrameVector<Real_t>* qq_old, far_memory::DataFrameVector<Real_t>* ql_old,
                         Real_t rho0,
                         Real_t eosvmax,
                         Index_t length, Index_t *regElemList)
 {
+	DerefScope scope;
    far_memory::DataFrameVector<Real_t> *pHalfStep = AllocateFM<Real_t>(length) ;
 
 #pragma omp parallel for firstprivate(length, emin)
    for (Index_t i = 0 ; i < length ; ++i) {
-      e_new[i] = e_old[i] - Real_t(0.5) * delvc[i] * (p_old[i] + q_old[i])
-         + Real_t(0.5) * work[i];
+      e_new->at_mut(scope, i) = e_old->at(scope, i) - Real_t(0.5) * delvc->at(scope, i) * (p_old->at(scope, i) + q_old->at(scope, i))
+         + Real_t(0.5) * work->at(scope, i);
 
-      if (e_new[i]  < emin ) {
-         e_new[i] = emin ;
+      if (e_new->at(scope, i)  < emin ) {
+         e_new->at_mut(scope, i) = emin ;
       }
    }
 
@@ -2097,14 +2122,14 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
 
 #pragma omp parallel for firstprivate(length, rho0)
    for (Index_t i = 0 ; i < length ; ++i) {
-      Real_t vhalf = Real_t(1.) / (Real_t(1.) + compHalfStep[i]) ;
+      Real_t vhalf = Real_t(1.) / (Real_t(1.) + compHalfStep->at(scope, i)) ;
 
-      if ( delvc[i] > Real_t(0.) ) {
-         q_new[i] /* = qq_old[i] = ql_old[i] */ = Real_t(0.) ;
+      if ( delvc->at(scope, i) > Real_t(0.) ) {
+         q_new->at_mut(scope, i) /* = qq_old->at_mut(scope, i) = ql_old->at(scope, i) */ = Real_t(0.) ;
       }
       else {
-         Real_t ssc = ( pbvc[i] * e_new[i]
-                 + vhalf * vhalf * bvc[i] * pHalfStep[i] ) / rho0 ;
+         Real_t ssc = ( pbvc->at(scope, i) * e_new->at(scope, i)
+                 + vhalf * vhalf * bvc->at(scope, i) * pHalfStep->at(scope, i) ) / rho0 ;
 
          if ( ssc <= Real_t(.1111111e-36) ) {
             ssc = Real_t(.3333333e-18) ;
@@ -2112,24 +2137,24 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
             ssc = SQRT(ssc) ;
          }
 
-         q_new[i] = (ssc*ql_old[i] + qq_old[i]) ;
+         q_new->at_mut(scope, i) = (ssc*ql_old->at(scope, i) + qq_old->at(scope, i)) ;
       }
 
-      e_new[i] = e_new[i] + Real_t(0.5) * delvc[i]
-         * (  Real_t(3.0)*(p_old[i]     + q_old[i])
-              - Real_t(4.0)*(pHalfStep[i] + q_new[i])) ;
+      e_new->at_mut(scope, i) = e_new->at(scope, i) + Real_t(0.5) * delvc->at(scope, i)
+         * (  Real_t(3.0)*(p_old->at(scope, i)     + q_old->at(scope, i))
+              - Real_t(4.0)*(pHalfStep->at(scope, i) + q_new->at(scope, i))) ;
    }
 
 #pragma omp parallel for firstprivate(length, emin, e_cut)
    for (Index_t i = 0 ; i < length ; ++i) {
 
-      e_new[i] += Real_t(0.5) * work[i];
+      e_new->at_mut(scope, i) += Real_t(0.5) * work->at(scope, i);
 
-      if (FABS(e_new[i]) < e_cut) {
-         e_new[i] = Real_t(0.)  ;
+      if (FABS(e_new->at(scope, i)) < e_cut) {
+         e_new->at_mut(scope, i) = Real_t(0.)  ;
       }
-      if (     e_new[i]  < emin ) {
-         e_new[i] = emin ;
+      if (     e_new->at(scope, i)  < emin ) {
+         e_new->at_mut(scope, i) = emin ;
       }
    }
 
@@ -2142,12 +2167,12 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
       Index_t ielem = regElemList[i];
       Real_t q_tilde ;
 
-      if (delvc[i] > Real_t(0.)) {
+      if (delvc->at(scope, i) > Real_t(0.)) {
          q_tilde = Real_t(0.) ;
       }
       else {
-         Real_t ssc = ( pbvc[i] * e_new[i]
-                 + vnewc[ielem] * vnewc[ielem] * bvc[i] * p_new[i] ) / rho0 ;
+         Real_t ssc = ( pbvc->at(scope, i) * e_new->at(scope, i)
+                 + vnewc->at(scope, ielem) * vnewc->at(scope, ielem) * bvc->at(scope, i) * p_new->at(scope, i) ) / rho0 ;
 
          if ( ssc <= Real_t(.1111111e-36) ) {
             ssc = Real_t(.3333333e-18) ;
@@ -2155,18 +2180,18 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
             ssc = SQRT(ssc) ;
          }
 
-         q_tilde = (ssc*ql_old[i] + qq_old[i]) ;
+         q_tilde = (ssc*ql_old->at(scope, i) + qq_old->at(scope, i)) ;
       }
 
-      e_new[i] = e_new[i] - (  Real_t(7.0)*(p_old[i]     + q_old[i])
-                               - Real_t(8.0)*(pHalfStep[i] + q_new[i])
-                               + (p_new[i] + q_tilde)) * delvc[i]*sixth ;
+      e_new->at_mut(scope, i) = e_new->at(scope, i) - (  Real_t(7.0)*(p_old->at(scope, i)     + q_old->at(scope, i))
+                               - Real_t(8.0)*(pHalfStep->at(scope, i) + q_new->at(scope, i))
+                               + (p_new->at(scope, i) + q_tilde)) * delvc->at(scope, i)*sixth ;
 
-      if (FABS(e_new[i]) < e_cut) {
-         e_new[i] = Real_t(0.)  ;
+      if (FABS(e_new->at(scope, i)) < e_cut) {
+         e_new->at_mut(scope, i) = Real_t(0.)  ;
       }
-      if (     e_new[i]  < emin ) {
-         e_new[i] = emin ;
+      if (     e_new->at(scope, i)  < emin ) {
+         e_new->at_mut(scope, i) = emin ;
       }
    }
 
@@ -2177,9 +2202,9 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
    for (Index_t i = 0 ; i < length ; ++i){
       Index_t ielem = regElemList[i];
 
-      if ( delvc[i] <= Real_t(0.) ) {
-         Real_t ssc = ( pbvc[i] * e_new[i]
-                 + vnewc[ielem] * vnewc[ielem] * bvc[i] * p_new[i] ) / rho0 ;
+      if ( delvc->at(scope, i) <= Real_t(0.) ) {
+         Real_t ssc = ( pbvc->at(scope, i) * e_new->at(scope, i)
+                 + vnewc->at(scope, ielem) * vnewc->at(scope, ielem) * bvc->at(scope, i) * p_new->at(scope, i) ) / rho0 ;
 
          if ( ssc <= Real_t(.1111111e-36) ) {
             ssc = Real_t(.3333333e-18) ;
@@ -2187,9 +2212,9 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
             ssc = SQRT(ssc) ;
          }
 
-         q_new[i] = (ssc*ql_old[i] + qq_old[i]) ;
+         q_new->at_mut(scope, i) = (ssc*ql_old->at(scope, i) + qq_old->at(scope, i)) ;
 
-         if (FABS(q_new[i]) < q_cut) q_new[i] = Real_t(0.) ;
+         if (FABS(q_new->at(scope, i)) < q_cut) q_new->at_mut(scope, i) = Real_t(0.) ;
       }
    }
 
@@ -2202,16 +2227,17 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
 
 static inline
 void CalcSoundSpeedForElems(Domain &domain,
-                            Real_t *vnewc, Real_t rho0, Real_t *enewc,
-                            Real_t *pnewc, Real_t *pbvc,
-                            Real_t *bvc, Real_t ss4o3,
+                            far_memory::DataFrameVector<Real_t> *vnewc, Real_t rho0, far_memory::DataFrameVector<Real_t> *enewc,
+                            far_memory::DataFrameVector<Real_t> *pnewc, far_memory::DataFrameVector<Real_t> *pbvc,
+                            far_memory::DataFrameVector<Real_t> *bvc, Real_t ss4o3,
                             Index_t len, Index_t *regElemList)
 {
+	DerefScope scope;
 #pragma omp parallel for firstprivate(rho0, ss4o3)
    for (Index_t i = 0; i < len ; ++i) {
       Index_t ielem = regElemList[i];
-      Real_t ssTmp = (pbvc[i] * enewc[i] + vnewc[ielem] * vnewc[ielem] *
-                 bvc[i] * pnewc[i]) / rho0;
+      Real_t ssTmp = (pbvc->at(scope, i) * enewc->at(scope, i) + vnewc->at(scope, ielem) * vnewc->at(scope, ielem) *
+                 bvc->at(scope, i) * pnewc->at(scope, i)) / rho0;
       if (ssTmp <= Real_t(.1111111e-36)) {
          ssTmp = Real_t(.3333333e-18);
       }
@@ -2228,6 +2254,7 @@ static inline
 void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
                      Int_t numElemReg, Index_t *regElemList, Int_t rep)
 {
+   DerefScope scope;
    Real_t  e_cut = domain.e_cut() ;
    Real_t  p_cut = domain.p_cut() ;
    Real_t  ss4o3 = domain.ss4o3() ;
@@ -2265,21 +2292,21 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
 #pragma omp for nowait firstprivate(numElemReg)
          for (Index_t i=0; i<numElemReg; ++i) {
             Index_t ielem = regElemList[i];
-            e_old[i] = domain.e(ielem) ;
-            delvc[i] = domain.delv(ielem) ;
-            p_old[i] = domain.p(ielem) ;
-            q_old[i] = domain.q(ielem) ;
-            qq_old[i] = domain.qq(ielem) ;
-            ql_old[i] = domain.ql(ielem) ;
+            e_old->at_mut(scope, i) = domain.e(ielem) ;
+            delvc->at_mut(scope, i) = domain.delv(ielem) ;
+            p_old->at_mut(scope, i) = domain.p(ielem) ;
+            q_old->at_mut(scope, i) = domain.q(ielem) ;
+            qq_old->at_mut(scope, i) = domain.qq(ielem) ;
+            ql_old->at_mut(scope, i) = domain.ql(ielem) ;
          }
 
 #pragma omp for firstprivate(numElemReg)
          for (Index_t i = 0; i < numElemReg ; ++i) {
             Index_t ielem = regElemList[i];
             Real_t vchalf ;
-            compression[i] = Real_t(1.) / vnewc[ielem] - Real_t(1.);
-            vchalf = vnewc[ielem] - delvc[i] * Real_t(.5);
-            compHalfStep[i] = Real_t(1.) / vchalf - Real_t(1.);
+            compression->at_mut(scope, i) = Real_t(1.) / vnewc->at(scope, ielem) - Real_t(1.);
+            vchalf = vnewc->at(scope, ielem) - delvc->at(scope, i) * Real_t(.5);
+            compHalfStep->at_mut(scope, i) = Real_t(1.) / vchalf - Real_t(1.);
          }
 
       /* Check for v > eosvmax or v < eosvmin */
@@ -2287,8 +2314,8 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
 #pragma omp for nowait firstprivate(numElemReg, eosvmin)
             for(Index_t i=0 ; i<numElemReg ; ++i) {
                Index_t ielem = regElemList[i];
-               if (vnewc[ielem] <= eosvmin) { /* impossible due to calling func? */
-                  compHalfStep[i] = compression[i] ;
+               if (vnewc->at(scope,ielem) <= eosvmin) { /* impossible due to calling func? */
+                  compHalfStep->at_mut(scope, i) = compression->at(scope, i) ;
                }
             }
          }
@@ -2296,17 +2323,17 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
 #pragma omp for nowait firstprivate(numElemReg, eosvmax)
             for(Index_t i=0 ; i<numElemReg ; ++i) {
                Index_t ielem = regElemList[i];
-               if (vnewc[ielem] >= eosvmax) { /* impossible due to calling func? */
-                  p_old[i]        = Real_t(0.) ;
-                  compression[i]  = Real_t(0.) ;
-                  compHalfStep[i] = Real_t(0.) ;
+               if (vnewc->at(scope, ielem) >= eosvmax) { /* impossible due to calling func? */
+                  p_old->at_mut(scope, i)        = Real_t(0.) ;
+                  compression->at_mut(scope, i)  = Real_t(0.) ;
+                  compHalfStep->at_mut(scope, i) = Real_t(0.) ;
                }
             }
          }
 
 #pragma omp for nowait firstprivate(numElemReg)
          for (Index_t i = 0 ; i < numElemReg ; ++i) {
-            work[i] = Real_t(0.) ; 
+            work->at_mut(scope, i) = Real_t(0.) ; 
          }
       }
       CalcEnergyForElems(p_new, e_new, q_new, bvc, pbvc,
@@ -2320,9 +2347,9 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
 #pragma omp parallel for firstprivate(numElemReg)
    for (Index_t i=0; i<numElemReg; ++i) {
       Index_t ielem = regElemList[i];
-      domain.p(ielem) = p_new[i] ;
-      domain.e(ielem) = e_new[i] ;
-      domain.q(ielem) = q_new[i] ;
+      domain.p(ielem) = p_new->at(scope, i);
+      domain.e(ielem) = e_new->at(scope, i);
+      domain.q(ielem) = q_new->at(scope, i);
    }
 
    CalcSoundSpeedForElems(domain,
@@ -2351,6 +2378,7 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
 static inline
 void ApplyMaterialPropertiesForElems(Domain& domain)
 {
+   DerefScope scope;
    Index_t numElem = domain.numElem() ;
 
   if (numElem != 0) {
@@ -2363,20 +2391,19 @@ void ApplyMaterialPropertiesForElems(Domain& domain)
     {
 #pragma omp for firstprivate(numElem)
        for(Index_t i=0 ; i<numElem ; ++i) {
-          vnewc[i] = domain.vnew(i) ;
+          vnewc->at_mut(scope, i) = domain.vnew(i) ;
        }
 
        // Bound the updated relative volumes with eosvmin/max
        if (eosvmin != Real_t(0.)) {
 #pragma omp for nowait firstprivate(numElem)
           for(Index_t i=0 ; i<numElem ; ++i) {
-             if (vnewc[i] < eosvmin)
-                vnewc[i] = eosvmin ;
+             if (vnewc->at(scope, i) < eosvmin)
+                vnewc->at_mut(scope, i) = eosvmin ;
           }
        }
 
        if (eosvmax != Real_t(0.)) {
-	  DerefScope scope;     
 #pragma omp for nowait firstprivate(numElem)
           for(Index_t i=0 ; i<numElem ; ++i) {
              if (vnewc->at(scope, i) > eosvmax)
