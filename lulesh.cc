@@ -526,18 +526,18 @@ void IntegrateStressForElems( Domain &domain,
 #endif
 
    Index_t numElem8 = numElem * 8 ;
-   Real_t *fx_elem;
-   Real_t *fy_elem;
-   Real_t *fz_elem;
+   far_memory::DataFrameVector<Real_t> *fx_elem;
+   far_memory::DataFrameVector<Real_t> *fy_elem;
+   far_memory::DataFrameVector<Real_t> *fz_elem;
    Real_t fx_local[8] ;
    Real_t fy_local[8] ;
    Real_t fz_local[8] ;
 
 
   if (numthreads > 1) {
-     fx_elem = Allocate<Real_t>(numElem8) ;
-     fy_elem = Allocate<Real_t>(numElem8) ;
-     fz_elem = Allocate<Real_t>(numElem8) ;
+     fx_elem = AllocateFM<Real_t>(numElem8) ;
+     fy_elem = AllocateFM<Real_t>(numElem8) ;
+     fz_elem = AllocateFM<Real_t>(numElem8) ;
   }
   // loop over all elements
 
@@ -753,14 +753,14 @@ void CalcFBHourglassForceForElems( Domain &domain,
   
    Index_t numElem8 = numElem * 8 ;
 
-   Real_t *fx_elem; 
-   Real_t *fy_elem; 
-   Real_t *fz_elem; 
+   far_memory::DataFrameVector<Real_t> *fx_elem; 
+   far_memory::DataFrameVector<Real_t> *fy_elem; 
+   far_memory::DataFrameVector<Real_t> *fz_elem; 
 
    if(numthreads > 1) {
-      fx_elem = Allocate<Real_t>(numElem8) ;
-      fy_elem = Allocate<Real_t>(numElem8) ;
-      fz_elem = Allocate<Real_t>(numElem8) ;
+      fx_elem = AllocateFM<Real_t>(numElem8) ;
+      fy_elem = AllocateFM<Real_t>(numElem8) ;
+      fz_elem = AllocateFM<Real_t>(numElem8) ;
    }
 
    Real_t  gamma[4][8];
@@ -1021,12 +1021,12 @@ void CalcHourglassControlForElems(Domain& domain,
 {
    Index_t numElem = domain.numElem() ;
    Index_t numElem8 = numElem * 8 ;
-   Real_t *dvdx = Allocate<Real_t>(numElem8) ;
-   Real_t *dvdy = Allocate<Real_t>(numElem8) ;
-   Real_t *dvdz = Allocate<Real_t>(numElem8) ;
-   Real_t *x8n  = Allocate<Real_t>(numElem8) ;
-   Real_t *y8n  = Allocate<Real_t>(numElem8) ;
-   Real_t *z8n  = Allocate<Real_t>(numElem8) ;
+   far_memory::DataFrameVector<Real_t> *dvdx = AllocateFM<Real_t>(numElem8) ;
+   far_memory::DataFrameVector<Real_t> *dvdy = AllocateFM<Real_t>(numElem8) ;
+   far_memory::DataFrameVector<Real_t> *dvdz = AllocateFM<Real_t>(numElem8) ;
+   far_memory::DataFrameVector<Real_t> *x8n  = AllocateFM<Real_t>(numElem8) ;
+   far_memory::DataFrameVector<Real_t> *y8n  = AllocateFM<Real_t>(numElem8) ;
+   far_memory::DataFrameVector<Real_t> *z8n  = AllocateFM<Real_t>(numElem8) ;
 
    /* start loop over elements */
 #pragma omp parallel for firstprivate(numElem)
@@ -1087,10 +1087,10 @@ void CalcVolumeForceForElems(Domain& domain)
    Index_t numElem = domain.numElem() ;
    if (numElem != 0) {
       Real_t  hgcoef = domain.hgcoef() ;
-      Real_t *sigxx  = Allocate<Real_t>(numElem) ;
-      Real_t *sigyy  = Allocate<Real_t>(numElem) ;
-      Real_t *sigzz  = Allocate<Real_t>(numElem) ;
-      Real_t *determ = Allocate<Real_t>(numElem) ;
+      far_memory::DataFrameVector<Real_t> *sigxx  = AllocateFM<Real_t>(numElem) ;
+      far_memory::DataFrameVector<Real_t> *sigyy  = AllocateFM<Real_t>(numElem) ;
+      far_memory::DataFrameVector<Real_t> *sigzz  = AllocateFM<Real_t>(numElem) ;
+      far_memory::DataFrameVector<Real_t> *determ = AllocateFM<Real_t>(numElem) ;
 
       /* Sum contributions to total stress tensor */
       InitStressTermsForElems(domain, sigxx, sigyy, sigzz, numElem);
@@ -2080,7 +2080,7 @@ void CalcEnergyForElems(Real_t* p_new, Real_t* e_new, Real_t* q_new,
                         Real_t eosvmax,
                         Index_t length, Index_t *regElemList)
 {
-   Real_t *pHalfStep = Allocate<Real_t>(length) ;
+   far_memory::DataFrameVector<Real_t> *pHalfStep = AllocateFM<Real_t>(length) ;
 
 #pragma omp parallel for firstprivate(length, emin)
    for (Index_t i = 0 ; i < length ; ++i) {
@@ -2225,7 +2225,7 @@ void CalcSoundSpeedForElems(Domain &domain,
 /******************************************/
 
 static inline
-void EvalEOSForElems(Domain& domain, Real_t *vnewc,
+void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
                      Int_t numElemReg, Index_t *regElemList, Int_t rep)
 {
    Real_t  e_cut = domain.e_cut() ;
@@ -2242,20 +2242,20 @@ void EvalEOSForElems(Domain& domain, Real_t *vnewc,
    // These temporaries will be of different size for 
    // each call (due to different sized region element
    // lists)
-   Real_t *e_old = Allocate<Real_t>(numElemReg) ;
-   Real_t *delvc = Allocate<Real_t>(numElemReg) ;
-   Real_t *p_old = Allocate<Real_t>(numElemReg) ;
-   Real_t *q_old = Allocate<Real_t>(numElemReg) ;
-   Real_t *compression = Allocate<Real_t>(numElemReg) ;
-   Real_t *compHalfStep = Allocate<Real_t>(numElemReg) ;
-   Real_t *qq_old = Allocate<Real_t>(numElemReg) ;
-   Real_t *ql_old = Allocate<Real_t>(numElemReg) ;
-   Real_t *work = Allocate<Real_t>(numElemReg) ;
-   Real_t *p_new = Allocate<Real_t>(numElemReg) ;
-   Real_t *e_new = Allocate<Real_t>(numElemReg) ;
-   Real_t *q_new = Allocate<Real_t>(numElemReg) ;
-   Real_t *bvc = Allocate<Real_t>(numElemReg) ;
-   Real_t *pbvc = Allocate<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *e_old = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *delvc = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *p_old = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *q_old = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *compression = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *compHalfStep = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *qq_old = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *ql_old = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *work = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *p_new = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *e_new = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *q_new = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *bvc = AllocateFM<Real_t>(numElemReg) ;
+   far_memory::DataFrameVector<Real_t> *pbvc = AllocateFM<Real_t>(numElemReg) ;
  
    //loop to add load imbalance based on region number 
    for(Int_t j = 0; j < rep; j++) {
@@ -2357,7 +2357,7 @@ void ApplyMaterialPropertiesForElems(Domain& domain)
     /* Expose all of the variables needed for material evaluation */
     Real_t eosvmin = domain.eosvmin() ;
     Real_t eosvmax = domain.eosvmax() ;
-    Real_t *vnewc = Allocate<Real_t>(numElem) ;
+    far_memory::DataFrameVector<Real_t> *vnewc = AllocateFM<Real_t>(numElem) ;
 
 #pragma omp parallel
     {
@@ -2376,10 +2376,11 @@ void ApplyMaterialPropertiesForElems(Domain& domain)
        }
 
        if (eosvmax != Real_t(0.)) {
+	  DerefScope scope;     
 #pragma omp for nowait firstprivate(numElem)
           for(Index_t i=0 ; i<numElem ; ++i) {
-             if (vnewc[i] > eosvmax)
-                vnewc[i] = eosvmax ;
+             if (vnewc->at(scope, i) > eosvmax)
+                vnewc->at_mut(scope, i) = eosvmax ;
           }
        }
 
@@ -2697,7 +2698,7 @@ void _main(void *arg)
       dataframe_vector.push_back(scope, static_cast<double>(i));
     }
    */
-   auto alloc_vector = AllocateFM<double>(10);
+   auto alloc_vector = AllocateFM<Real_t>(10);
    DerefScope scope;
    cout << "val " << alloc_vector->at(scope, 1);
 
