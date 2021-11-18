@@ -1,32 +1,20 @@
 #!/bin/bash
 
-log_folder=`pwd`
+source ../shared.sh
 
-cd ../
-source shared.sh
-
-#cache_sizes=(1 3 5 7 9 11 13 15 17 19 21 23 25 27 29 31)
-cache_sizes=(1)
+cache_sizes_arr=( 400 600 )
 
 sudo pkill -9 main
-
-#CXXFLAGS="-DDISABLE_OFFLOAD_UNIQUE"
-#make clean
-#make -j CXXFLAGS="$CXXFLAGS"
-
-cd LULESH
-
-for cache_size in ${cache_sizes[@]}
+for cache_size in ${cache_sizes_arr[@]}
 do
-    #sed "s/constexpr uint64_t kCacheGBs.*/constexpr uint64_t kCacheGBs = $cache_size;/g" app/main_tcp.cc -i
-    #cd build
-    make clean
+    #sed "s/constexpr static uint64_t kCacheSize.*/constexpr static uint64_t kCacheSize = $cache_size * Region::kSize;/g" main.cpp -i
+    #make clean
     make -j
-    pwd 
-    ls
-    rerun_local_iokerneld_noht
+    rerun_local_iokerneld
     rerun_mem_server
-    run_program_noht ./lulesh2.0 1>$log_folder/log.$cache_size 2>&1
-    cd ..
+    run_program ./lulesh2.0 1>log.$cache_size 2>&1
 done
 kill_local_iokerneld
+
+
+

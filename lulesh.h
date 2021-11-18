@@ -21,11 +21,17 @@
 #include <stdint.h>
 #include <vector>
 
+#include "manager.hpp"
+
 //**************************************************
 // Allow flexibility for arithmetic representations 
 //**************************************************
 
 #define MAX(a, b) ( ((a) > (b)) ? (a) : (b))
+
+using namespace far_memory;
+
+extern FarMemManager *far_mem_manager;
 
 
 // Precision specification
@@ -107,10 +113,23 @@ inline real10 FABS(real10 arg) { return fabsl(arg) ; }
 /* might want to add access methods so that memory can be */
 /* better managed, as in luleshFT */
 
+
 template <typename T>
 T *Allocate(size_t size)
 {
    return static_cast<T *>(malloc(sizeof(T)*size)) ;
+}
+
+
+template <typename T>
+DataFrameVector<T> *AllocateFM(size_t size)
+{
+  auto dataframe_vector = far_mem_manager->allocate_dataframe_vector_heap<T>();
+  for (uint64_t i = 0; i < size; i++) {
+      DerefScope scope;
+      dataframe_vector->push_back(scope, static_cast<T>(i));
+  }
+  return dataframe_vector;
 }
 
 template <typename T>

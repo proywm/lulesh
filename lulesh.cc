@@ -148,6 +148,8 @@ extern "C" {
 #include <runtime/runtime.h>
 }
 
+#include "deref_scope.hpp"
+#include "stats.hpp"
 #include "array.hpp"
 #include "device.hpp"
 #include "helpers.hpp"
@@ -169,6 +171,18 @@ extern "C" {
 #endif
 
 #include "lulesh.h"
+
+using namespace far_memory;
+using namespace std;
+
+FarMemManager *far_mem_manager;
+
+constexpr static uint64_t kCacheSize = (128ULL << 20);
+constexpr static uint64_t kFarMemSize = (4ULL << 30);
+constexpr static uint32_t kNumGCThreads = 12;
+constexpr static uint32_t kNumEntries =
+    (8ULL << 20); // So the array size is larger than the local cache size.
+constexpr static uint32_t kNumConnections = 300;
 
 /* Work Routines */
 
@@ -2665,6 +2679,28 @@ void _main(void *arg)
    int myRank ;
    struct cmdLineOpts opts;
 
+   auto raddr = helpers::str_to_netaddr(ip_addr_port);
+   auto manager = std::unique_ptr<FarMemManager>(FarMemManagerFactory::build(
+      kCacheSize, kNumGCThreads,  new TCPDevice(raddr, kNumConnections, kFarMemSize)));
+
+   far_mem_manager = manager.get();
+
+   /***************************
+    * Try allocating dataframe vector here
+    *
+    *
+    * **************************/
+   /*
+   auto dataframe_vector = manager->allocate_dataframe_vector<double>();
+   for (uint64_t i = 0; i < 10; i++) {
+      DerefScope scope;
+      dataframe_vector.push_back(scope, static_cast<double>(i));
+    }
+   */
+   auto alloc_vector = AllocateFM<double>(10);
+   DerefScope scope;
+   cout << "val " << alloc_vector->at(scope, 1);
+
 #if USE_MPI   
    Domain_member fieldData ;
    
@@ -2817,6 +2853,11 @@ int main(int _argc, char *argv[]) {
     argv[i - 1] = argv[i];
   }
   argc = _argc - 2;
+
+//auto manager = std::unique_ptr<FarMemManager>(FarMemManagerFactory::build(
+//      kCacheSize, kNumGCThreads,  new TCPDevice(raddr, kNumConnections, kFarMemSize)));
+
+ // far_mem_manager = manager.get();
 
   ret = runtime_init(conf_path, _main, argv);
   if (ret) {
