@@ -2035,6 +2035,7 @@ void CalcQForElems(Domain& domain)
 
       // Free up memory
       domain.DeallocateGradients();
+      std::cout << " Free up memory \n";
 
       /* Don't allow excessive artificial viscosity */
       Index_t idx = -1; 
@@ -2486,9 +2487,10 @@ void LagrangeElements(Domain& domain, Index_t numElem)
 
   /* Calculate Q.  (Monotonic q option requires communication) */
   CalcQForElems(domain) ;
-
+  cout << "ApplyMaterialPropertiesForElems \n";
   ApplyMaterialPropertiesForElems(domain) ;
 
+  cout << "UpdateVolumesForElems \n";
   UpdateVolumesForElems(domain, 
                         domain.v_cut(), numElem) ;
 }
