@@ -141,6 +141,20 @@ void Release(T **ptr)
    }
 }
 
+#undef ReleaseFM
+#define ReleaseFM printf("Calling FunctionName from %s\n",__FUNCTION__);ReleaseFM_real
+
+template <typename T>
+void ReleaseFM_real(DataFrameVector<T> *dataframe_vector)
+{
+    
+    while(!dataframe_vector->empty())
+    {
+	 DerefScope scope;
+         dataframe_vector->pop_back(scope);
+    }
+}
+
 //////////////////////////////////////////////////////
 // Primary data structure
 //////////////////////////////////////////////////////
@@ -252,13 +266,13 @@ class Domain {
 
    void DeallocateGradients()
    {
-      Release(&m_delx_zeta);
-      Release(&m_delx_eta) ;
-      Release(&m_delx_xi)  ;
+      ReleaseFM(m_delx_zeta);
+      ReleaseFM(m_delx_eta) ;
+      ReleaseFM(m_delx_xi)  ;
 
-      Release(&m_delv_zeta);
-      Release(&m_delv_eta) ;
-      Release(&m_delv_xi)  ;
+      ReleaseFM(m_delv_zeta);
+      ReleaseFM(m_delv_eta) ;
+      ReleaseFM(m_delv_xi)  ;
    }
 
    void AllocateStrains(Int_t numElem)
@@ -270,9 +284,9 @@ class Domain {
 
    void DeallocateStrains()
    {
-      Release(&m_dzz) ;
-      Release(&m_dyy) ;
-      Release(&m_dxx) ;
+      ReleaseFM(m_dzz) ;
+      ReleaseFM(m_dyy) ;
+      ReleaseFM(m_dxx) ;
    }
    
    //

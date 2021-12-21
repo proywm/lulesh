@@ -623,9 +623,9 @@ void IntegrateStressForElems( Domain &domain,
         domain.fy(gnode) = fy_tmp ;
         domain.fz(gnode) = fz_tmp ;
      }
-     Release(&fz_elem) ;
-     Release(&fy_elem) ;
-     Release(&fx_elem) ;
+     ReleaseFM(fz_elem) ;
+     ReleaseFM(fy_elem) ;
+     ReleaseFM(fx_elem) ;
   }
 }
 
@@ -1028,9 +1028,9 @@ void CalcFBHourglassForceForElems( Domain &domain,
          domain.fy(gnode) += fy_tmp ;
          domain.fz(gnode) += fz_tmp ;
       }
-      Release(&fz_elem) ;
-      Release(&fy_elem) ;
-      Release(&fx_elem) ;
+      ReleaseFM(fz_elem) ;
+      ReleaseFM(fy_elem) ;
+      ReleaseFM(fx_elem) ;
    }
 }
 
@@ -1091,12 +1091,12 @@ void CalcHourglassControlForElems(Domain& domain,
                                     hgcoef, numElem, domain.numNode()) ;
    }
 
-   Release(&z8n) ;
-   Release(&y8n) ;
-   Release(&x8n) ;
-   Release(&dvdz) ;
-   Release(&dvdy) ;
-   Release(&dvdx) ;
+   ReleaseFM(z8n) ;
+   ReleaseFM(y8n) ;
+   ReleaseFM(x8n) ;
+   ReleaseFM(dvdz) ;
+   ReleaseFM(dvdy) ;
+   ReleaseFM(dvdx) ;
 
    return ;
 }
@@ -1138,10 +1138,10 @@ void CalcVolumeForceForElems(Domain& domain)
 
       CalcHourglassControlForElems(domain, determ, hgcoef) ;
 
-      Release(&determ) ;
-      Release(&sigzz) ;
-      Release(&sigyy) ;
-      Release(&sigxx) ;
+      ReleaseFM(determ) ;
+      ReleaseFM(sigzz) ;
+      ReleaseFM(sigyy) ;
+      ReleaseFM(sigxx) ;
    }
 }
 
@@ -2218,7 +2218,7 @@ void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>* p_new, far_memory::
       }
    }
 
-   Release(&pHalfStep) ;
+   ReleaseFM(pHalfStep) ;
 
    return ;
 }
@@ -2357,20 +2357,20 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> *vnewc,
                           pbvc, bvc, ss4o3,
                           numElemReg, regElemList) ;
 
-   Release(&pbvc) ;
-   Release(&bvc) ;
-   Release(&q_new) ;
-   Release(&e_new) ;
-   Release(&p_new) ;
-   Release(&work) ;
-   Release(&ql_old) ;
-   Release(&qq_old) ;
-   Release(&compHalfStep) ;
-   Release(&compression) ;
-   Release(&q_old) ;
-   Release(&p_old) ;
-   Release(&delvc) ;
-   Release(&e_old) ;
+   ReleaseFM(pbvc) ;
+   ReleaseFM(bvc) ;
+   ReleaseFM(q_new) ;
+   ReleaseFM(e_new) ;
+   ReleaseFM(p_new) ;
+   ReleaseFM(work) ;
+   ReleaseFM(ql_old) ;
+   ReleaseFM(qq_old) ;
+   ReleaseFM(compHalfStep) ;
+   ReleaseFM(compression) ;
+   ReleaseFM(q_old) ;
+   ReleaseFM(p_old) ;
+   ReleaseFM(delvc) ;
+   ReleaseFM(e_old) ;
 }
 
 /******************************************/
@@ -2452,7 +2452,7 @@ void ApplyMaterialPropertiesForElems(Domain& domain)
        EvalEOSForElems(domain, vnewc, numElemReg, regElemList, rep);
     }
 
-    Release(&vnewc) ;
+    ReleaseFM(vnewc) ;
   }
 }
 

@@ -12,7 +12,8 @@ do
     make -j
     rerun_local_iokerneld
     rerun_mem_server
-    run_program ./lulesh2.0 1>log.$cache_size 2>&1
+    #run_program ./lulesh2.0 1>log.$cache_size 2>&1
+    run_program ./lulesh2.0
 done
 kill_local_iokerneld
 
