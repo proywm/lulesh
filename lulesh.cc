@@ -534,7 +534,6 @@ void IntegrateStressForElems( Domain &domain,
                               far_memory::DataFrameVector<Real_t> &sigxx, far_memory::DataFrameVector<Real_t> &sigyy, far_memory::DataFrameVector<Real_t> &sigzz,
                               far_memory::DataFrameVector<Real_t> &determ, Index_t numElem, Index_t numNode)
 {
-	DerefScope scope;
 #if _OPENMP
    Index_t numthreads = omp_get_max_threads();
 #else
@@ -570,9 +569,12 @@ void IntegrateStressForElems( Domain &domain,
     // get nodal coordinates from global arrays and copy into local arrays.
     CollectDomainNodesToElemNodes(domain, elemToNode, x_local, y_local, z_local);
 
+    {
+    DerefScope scope;    
     // Volume calculation involves extra work for numerical consistency
     determ.at_mut(scope, k) = CalcElemShapeFunctionDerivatives(x_local, y_local, z_local,
                                          B);
+    }
 
     CalcElemNodeNormals( B[0] , B[1], B[2],
                           x_local, y_local, z_local );
@@ -584,12 +586,14 @@ void IntegrateStressForElems( Domain &domain,
 //                                    &fx_elem[k*8],
 //                                    &fy_elem[k*8],
 //                                    &fz_elem[k*8] ) ;
+       DerefScope scope;          
        SumElemStressesToNodeForcesFM( B, sigxx.at(scope, k), sigyy.at(scope, k), sigzz.at(scope, k),
                                     fx_elem,
                                     fy_elem,
                                     fz_elem, k*8 ) ;
     }
     else {
+       DerefScope scope;                
        SumElemStressesToNodeForces( B, sigxx.at(scope, k), sigyy.at(scope, k), sigzz.at(scope, k),
                                     fx_local, fy_local, fz_local ) ;
 
@@ -615,6 +619,7 @@ void IntegrateStressForElems( Domain &domain,
         Real_t fy_tmp = Real_t(0.0) ;
         Real_t fz_tmp = Real_t(0.0) ;
         for (Index_t i=0 ; i < count ; ++i) {
+	   DerefScope scope;	  
            Index_t ielem = cornerList[i] ;
            fx_tmp += fx_elem.at(scope, ielem) ;
            fy_tmp += fy_elem.at(scope, ielem) ;
@@ -759,7 +764,6 @@ void CalcFBHourglassForceForElems( Domain &domain,
                                    Real_t hourg, Index_t numElem,
                                    Index_t numNode)
 {
-	DerefScope scope;
 
 #if _OPENMP
    Index_t numthreads = omp_get_max_threads();
@@ -836,6 +840,8 @@ void CalcFBHourglassForceForElems( Domain &domain,
 
       const Index_t *elemToNode = domain.nodelist(i2);
       Index_t i3=8*i2;
+
+      DerefScope scope;      
       Real_t volinv=Real_t(1.0)/determ.at(scope, i2);
       Real_t ss1, mass1, volume13 ;
       for(Index_t i1=0;i1<4;++i1){
@@ -1020,6 +1026,7 @@ void CalcFBHourglassForceForElems( Domain &domain,
          Real_t fy_tmp = Real_t(0.0) ;
          Real_t fz_tmp = Real_t(0.0) ;
          for (Index_t i=0 ; i < count ; ++i) {
+            DerefScope scope;      	   
             Index_t ielem = cornerList[i] ;
             fx_tmp += fx_elem.at(scope, ielem) ;
             fy_tmp += fy_elem.at(scope, ielem) ;
@@ -1041,7 +1048,6 @@ static inline
 void CalcHourglassControlForElems(Domain& domain,
                                   far_memory::DataFrameVector<Real_t>& determ, Real_t hgcoef)
 {
-	DerefScope scope;
    Index_t numElem = domain.numElem() ;
    Index_t numElem8 = numElem * 8 ;
    
@@ -1070,10 +1076,11 @@ void CalcHourglassControlForElems(Domain& domain,
 
       CalcElemVolumeDerivative(pfx, pfy, pfz, x1, y1, z1);
 
+      {
+      DerefScope scope;      
       /* load into temporary storage for FB Hour Glass control */
       for(Index_t ii=0;ii<8;++ii){
          Index_t jj=8*i+ii;
-
          dvdx.at_mut(scope, jj) = pfx[ii];
          dvdy.at_mut(scope, jj) = pfy[ii];
          dvdz.at_mut(scope, jj) = pfz[ii];
@@ -1083,6 +1090,7 @@ void CalcHourglassControlForElems(Domain& domain,
       }
 
       determ.at_mut(scope, i) = domain.volo(i) * domain.v(i);
+      }
 
       /* Do a check for negative volumes */
       if ( domain.v(i) <= Real_t(0.0) ) {
@@ -1115,7 +1123,6 @@ void CalcHourglassControlForElems(Domain& domain,
 static inline
 void CalcVolumeForceForElems(Domain& domain)
 {
-	DerefScope scope; 
    Index_t numElem = domain.numElem() ;
    if (numElem != 0) {
       Real_t  hgcoef = domain.hgcoef() ;
@@ -1141,6 +1148,8 @@ void CalcVolumeForceForElems(Domain& domain)
 
       // check for negative element volume
 #pragma omp parallel for firstprivate(numElem)
+      {
+	DerefScope scope;       
       for ( Index_t k=0 ; k<numElem ; ++k ) {
          if (determ.at(scope,k) <= Real_t(0.0)) {
 #if USE_MPI            
@@ -1149,6 +1158,7 @@ void CalcVolumeForceForElems(Domain& domain)
             exit(VolumeError);
 #endif
          }
+      }
       }
 
       CalcHourglassControlForElems(domain, determ, hgcoef) ;
@@ -1591,7 +1601,10 @@ void CalcKinematicsForElems( Domain &domain,
     // volume calculations
     volume = CalcElemVolume(x_local, y_local, z_local );
     relativeVolume = volume / domain.volo(k) ;
-    domain.vnew(k) = relativeVolume ;
+    {
+      DerefScope scope;
+      domain.vnew(k, scope) = relativeVolume ;
+    }
     domain.delv(k) = relativeVolume - domain.v(k) ;
 
     // set characteristic length
@@ -1622,9 +1635,12 @@ void CalcKinematicsForElems( Domain &domain,
                                B, detJ, D );
 
     // put velocity gradient quantities into their global arrays.
-    domain.dxx(k) = D[0];
-    domain.dyy(k) = D[1];
-    domain.dzz(k) = D[2];
+    {
+    DerefScope scope;
+    domain.dxx(k, scope) = D[0];
+    domain.dyy(k, scope) = D[1];
+    domain.dzz(k, scope) = D[2];
+    }
   }
 }
 
@@ -1646,17 +1662,18 @@ void CalcLagrangeElements(Domain& domain)
       for ( Index_t k=0 ; k<numElem ; ++k )
       {
          // calc strain rate and apply as constraint (only done in FB element)
-         Real_t vdov = domain.dxx(k) + domain.dyy(k) + domain.dzz(k) ;
+	 DerefScope scope;	
+	 Real_t vdov = domain.dxx(k, scope) + domain.dyy(k, scope) + domain.dzz(k, scope) ;
          Real_t vdovthird = vdov/Real_t(3.0) ;
 
          // make the rate of deformation tensor deviatoric
          domain.vdov(k) = vdov ;
-         domain.dxx(k) -= vdovthird ;
-         domain.dyy(k) -= vdovthird ;
-         domain.dzz(k) -= vdovthird ;
+         domain.dxx(k, scope) -= vdovthird ;
+         domain.dyy(k, scope) -= vdovthird ;
+         domain.dzz(k, scope) -= vdovthird ;
 
         // See if any volumes are negative, and take appropriate action.
-         if (domain.vnew(k) <= Real_t(0.0))
+         if (domain.vnew(k, scope) <= Real_t(0.0))
         {
 #if USE_MPI           
            MPI_Abort(MPI_COMM_WORLD, VolumeError) ;
@@ -1746,7 +1763,8 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       Real_t zv6 = domain.zd(n6) ;
       Real_t zv7 = domain.zd(n7) ;
 
-      Real_t vol = domain.volo(i)*domain.vnew(i) ;
+      DerefScope scope;      
+      Real_t vol = domain.volo(i)*domain.vnew(i, scope) ;
       Real_t norm = Real_t(1.0) / ( vol + ptiny ) ;
 
       Real_t dxj = Real_t(-0.25)*((x0+x1+x5+x4) - (x3+x2+x6+x7)) ;
@@ -1767,7 +1785,7 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       ay = dzi*dxj - dxi*dzj ;
       az = dxi*dyj - dyi*dxj ;
 
-      domain.delx_zeta(i) = vol / SQRT(ax*ax + ay*ay + az*az + ptiny) ;
+      domain.delx_zeta(i, scope) = vol / SQRT(ax*ax + ay*ay + az*az + ptiny) ;
 
       ax *= norm ;
       ay *= norm ;
@@ -1777,7 +1795,7 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       dyv = Real_t(0.25)*((yv4+yv5+yv6+yv7) - (yv0+yv1+yv2+yv3)) ;
       dzv = Real_t(0.25)*((zv4+zv5+zv6+zv7) - (zv0+zv1+zv2+zv3)) ;
 
-      domain.delv_zeta(i) = ax*dxv + ay*dyv + az*dzv ;
+      domain.delv_zeta(i, scope) = ax*dxv + ay*dyv + az*dzv ;
 
       /* find delxi and delvi ( j cross k ) */
 
@@ -1785,7 +1803,7 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       ay = dzj*dxk - dxj*dzk ;
       az = dxj*dyk - dyj*dxk ;
 
-      domain.delx_xi(i) = vol / SQRT(ax*ax + ay*ay + az*az + ptiny) ;
+      domain.delx_xi(i, scope) = vol / SQRT(ax*ax + ay*ay + az*az + ptiny) ;
 
       ax *= norm ;
       ay *= norm ;
@@ -1795,7 +1813,7 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       dyv = Real_t(0.25)*((yv1+yv2+yv6+yv5) - (yv0+yv3+yv7+yv4)) ;
       dzv = Real_t(0.25)*((zv1+zv2+zv6+zv5) - (zv0+zv3+zv7+zv4)) ;
 
-      domain.delv_xi(i) = ax*dxv + ay*dyv + az*dzv ;
+      domain.delv_xi(i, scope) = ax*dxv + ay*dyv + az*dzv ;
 
       /* find delxj and delvj ( k cross i ) */
 
@@ -1803,7 +1821,7 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       ay = dzk*dxi - dxk*dzi ;
       az = dxk*dyi - dyk*dxi ;
 
-      domain.delx_eta(i) = vol / SQRT(ax*ax + ay*ay + az*az + ptiny) ;
+      domain.delx_eta(i, scope) = vol / SQRT(ax*ax + ay*ay + az*az + ptiny) ;
 
       ax *= norm ;
       ay *= norm ;
@@ -1813,7 +1831,7 @@ void CalcMonotonicQGradientsForElems(Domain& domain)
       dyv = Real_t(-0.25)*((yv0+yv1+yv5+yv4) - (yv3+yv2+yv6+yv7)) ;
       dzv = Real_t(-0.25)*((zv0+zv1+zv5+zv4) - (zv3+zv2+zv6+zv7)) ;
 
-      domain.delv_eta(i) = ax*dxv + ay*dyv + az*dzv ;
+      domain.delv_eta(i, scope) = ax*dxv + ay*dyv + az*dzv ;
    }
 }
 
@@ -1836,13 +1854,14 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
       Int_t bcMask = domain.elemBC(ielem) ;
       Real_t delvm = 0.0, delvp =0.0;
 
+      DerefScope scope;
       /*  phixi     */
-      Real_t norm = Real_t(1.) / (domain.delv_xi(ielem)+ ptiny ) ;
+      Real_t norm = Real_t(1.) / (domain.delv_xi(ielem, scope)+ ptiny ) ;
 
       switch (bcMask & XI_M) {
          case XI_M_COMM: /* needs comm data */
-         case 0:         delvm = domain.delv_xi(domain.lxim(ielem)); break ;
-         case XI_M_SYMM: delvm = domain.delv_xi(ielem) ;       break ;
+         case 0:         delvm = domain.delv_xi(domain.lxim(ielem), scope); break ;
+         case XI_M_SYMM: delvm = domain.delv_xi(ielem, scope) ;       break ;
          case XI_M_FREE: delvm = Real_t(0.0) ;      break ;
          default:          fprintf(stderr, "Error in switch at %s line %d\n",
                                    __FILE__, __LINE__);
@@ -1851,8 +1870,8 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
       }
       switch (bcMask & XI_P) {
          case XI_P_COMM: /* needs comm data */
-         case 0:         delvp = domain.delv_xi(domain.lxip(ielem)) ; break ;
-         case XI_P_SYMM: delvp = domain.delv_xi(ielem) ;       break ;
+         case 0:         delvp = domain.delv_xi(domain.lxip(ielem), scope) ; break ;
+         case XI_P_SYMM: delvp = domain.delv_xi(ielem, scope) ;       break ;
          case XI_P_FREE: delvp = Real_t(0.0) ;      break ;
          default:          fprintf(stderr, "Error in switch at %s line %d\n",
                                    __FILE__, __LINE__);
@@ -1873,14 +1892,13 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
       if ( phixi < Real_t(0.)) phixi = Real_t(0.) ;
       if ( phixi > monoq_max_slope) phixi = monoq_max_slope;
 
-
       /*  phieta     */
-      norm = Real_t(1.) / ( domain.delv_eta(ielem) + ptiny ) ;
+      norm = Real_t(1.) / ( domain.delv_eta(ielem, scope) + ptiny ) ;
 
       switch (bcMask & ETA_M) {
          case ETA_M_COMM: /* needs comm data */
-         case 0:          delvm = domain.delv_eta(domain.letam(ielem)) ; break ;
-         case ETA_M_SYMM: delvm = domain.delv_eta(ielem) ;        break ;
+         case 0:          delvm = domain.delv_eta(domain.letam(ielem), scope) ; break ;
+         case ETA_M_SYMM: delvm = domain.delv_eta(ielem, scope) ;        break ;
          case ETA_M_FREE: delvm = Real_t(0.0) ;        break ;
          default:          fprintf(stderr, "Error in switch at %s line %d\n",
                                    __FILE__, __LINE__);
@@ -1889,8 +1907,8 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
       }
       switch (bcMask & ETA_P) {
          case ETA_P_COMM: /* needs comm data */
-         case 0:          delvp = domain.delv_eta(domain.letap(ielem)) ; break ;
-         case ETA_P_SYMM: delvp = domain.delv_eta(ielem) ;        break ;
+         case 0:          delvp = domain.delv_eta(domain.letap(ielem), scope) ; break ;
+         case ETA_P_SYMM: delvp = domain.delv_eta(ielem, scope) ;        break ;
          case ETA_P_FREE: delvp = Real_t(0.0) ;        break ;
          default:          fprintf(stderr, "Error in switch at %s line %d\n",
                                    __FILE__, __LINE__);
@@ -1912,12 +1930,12 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
       if ( phieta > monoq_max_slope)  phieta = monoq_max_slope;
 
       /*  phizeta     */
-      norm = Real_t(1.) / ( domain.delv_zeta(ielem) + ptiny ) ;
-
+      norm = Real_t(1.) / ( domain.delv_zeta(ielem, scope) + ptiny ) ;
+      
       switch (bcMask & ZETA_M) {
          case ZETA_M_COMM: /* needs comm data */
-         case 0:           delvm = domain.delv_zeta(domain.lzetam(ielem)) ; break ;
-         case ZETA_M_SYMM: delvm = domain.delv_zeta(ielem) ;         break ;
+         case 0:           delvm = domain.delv_zeta(domain.lzetam(ielem), scope) ; break ;
+         case ZETA_M_SYMM: delvm = domain.delv_zeta(ielem, scope) ;         break ;
          case ZETA_M_FREE: delvm = Real_t(0.0) ;          break ;
          default:          fprintf(stderr, "Error in switch at %s line %d\n",
                                    __FILE__, __LINE__);
@@ -1926,8 +1944,8 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
       }
       switch (bcMask & ZETA_P) {
          case ZETA_P_COMM: /* needs comm data */
-         case 0:           delvp = domain.delv_zeta(domain.lzetap(ielem)) ; break ;
-         case ZETA_P_SYMM: delvp = domain.delv_zeta(ielem) ;         break ;
+         case 0:           delvp = domain.delv_zeta(domain.lzetap(ielem), scope) ; break ;
+         case ZETA_P_SYMM: delvp = domain.delv_zeta(ielem, scope) ;         break ;
          case ZETA_P_FREE: delvp = Real_t(0.0) ;          break ;
          default:          fprintf(stderr, "Error in switch at %s line %d\n",
                                    __FILE__, __LINE__);
@@ -1955,15 +1973,15 @@ void CalcMonotonicQRegionForElems(Domain &domain, Int_t r,
          qquad = Real_t(0.) ;
       }
       else {
-         Real_t delvxxi   = domain.delv_xi(ielem)   * domain.delx_xi(ielem)   ;
-         Real_t delvxeta  = domain.delv_eta(ielem)  * domain.delx_eta(ielem)  ;
-         Real_t delvxzeta = domain.delv_zeta(ielem) * domain.delx_zeta(ielem) ;
+         Real_t delvxxi   = domain.delv_xi(ielem, scope)   * domain.delx_xi(ielem, scope)   ;
+         Real_t delvxeta  = domain.delv_eta(ielem, scope)  * domain.delx_eta(ielem, scope)  ;
+         Real_t delvxzeta = domain.delv_zeta(ielem, scope) * domain.delx_zeta(ielem, scope) ;
 
          if ( delvxxi   > Real_t(0.) ) delvxxi   = Real_t(0.) ;
          if ( delvxeta  > Real_t(0.) ) delvxeta  = Real_t(0.) ;
          if ( delvxzeta > Real_t(0.) ) delvxzeta = Real_t(0.) ;
 
-         Real_t rho = domain.elemMass(ielem) / (domain.volo(ielem) * domain.vnew(ielem)) ;
+         Real_t rho = domain.elemMass(ielem) / (domain.volo(ielem) * domain.vnew(ielem, scope)) ;
 
          qlin = -qlc_monoq * rho *
             (  delvxxi   * (Real_t(1.) - phixi) +
@@ -2025,7 +2043,6 @@ void CalcQForElems(Domain& domain)
                domain.sizeX(), domain.sizeY(), domain.sizeZ(),
                true, true) ;
 #endif      
-
       /* Calculate velocity gradients */
       CalcMonotonicQGradientsForElems(domain);
 
@@ -2120,13 +2137,13 @@ void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>& p_new, far_memory::
                         Real_t eosvmax,
                         Index_t length, Index_t *regElemList)
 {
-	DerefScope scope;
    far_memory::DataFrameVector<Real_t> pHalfStep = far_mem_manager->allocate_dataframe_vector<Real_t>();
    Populate_dataframe_vector(length, pHalfStep);
 //   AllocateFM<Real_t>(length) ;
 
 #pragma omp parallel for firstprivate(length, emin)
    for (Index_t i = 0 ; i < length ; ++i) {
+      DerefScope scope;     
       e_new.at_mut(scope, i) = e_old.at(scope, i) - Real_t(0.5) * delvc.at(scope, i) * (p_old.at(scope, i) + q_old.at(scope, i))
          + Real_t(0.5) * work.at(scope, i);
 
@@ -2140,6 +2157,7 @@ void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>& p_new, far_memory::
 
 #pragma omp parallel for firstprivate(length, rho0)
    for (Index_t i = 0 ; i < length ; ++i) {
+      DerefScope scope;     
       Real_t vhalf = Real_t(1.) / (Real_t(1.) + compHalfStep.at(scope, i)) ;
 
       if ( delvc.at(scope, i) > Real_t(0.) ) {
@@ -2165,7 +2183,7 @@ void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>& p_new, far_memory::
 
 #pragma omp parallel for firstprivate(length, emin, e_cut)
    for (Index_t i = 0 ; i < length ; ++i) {
-
+      DerefScope scope;
       e_new.at_mut(scope, i) += Real_t(0.5) * work.at(scope, i);
 
       if (FABS(e_new.at(scope, i)) < e_cut) {
@@ -2181,6 +2199,7 @@ void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>& p_new, far_memory::
 
 #pragma omp parallel for firstprivate(length, rho0, emin, e_cut)
    for (Index_t i = 0 ; i < length ; ++i){
+      DerefScope scope;     
       const Real_t sixth = Real_t(1.0) / Real_t(6.0) ;
       Index_t ielem = regElemList[i];
       Real_t q_tilde ;
@@ -2218,6 +2237,7 @@ void CalcEnergyForElems(far_memory::DataFrameVector<Real_t>& p_new, far_memory::
 
 #pragma omp parallel for firstprivate(length, rho0, q_cut)
    for (Index_t i = 0 ; i < length ; ++i){
+      DerefScope scope;     
       Index_t ielem = regElemList[i];
 
       if ( delvc.at(scope, i) <= Real_t(0.) ) {
@@ -2272,7 +2292,6 @@ static inline
 void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> & vnewc,
                      Int_t numElemReg, Index_t *regElemList, Int_t rep)
 {
-   DerefScope scope;
    Real_t  e_cut = domain.e_cut() ;
    Real_t  p_cut = domain.p_cut() ;
    Real_t  ss4o3 = domain.ss4o3() ;
@@ -2319,6 +2338,8 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> & vnewc
  
    //loop to add load imbalance based on region number 
    for(Int_t j = 0; j < rep; j++) {
+      {
+      DerefScope scope;     
       /* compress data, minimal set */
 #pragma omp parallel
       {
@@ -2369,6 +2390,7 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> & vnewc
             work.at_mut(scope, i) = Real_t(0.) ; 
          }
       }
+      }
       CalcEnergyForElems(p_new, e_new, q_new, bvc, pbvc,
                          p_old, e_old,  q_old, compression, compHalfStep,
                          vnewc, work,  delvc, pmin,
@@ -2379,6 +2401,7 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> & vnewc
 
 #pragma omp parallel for firstprivate(numElemReg)
    for (Index_t i=0; i<numElemReg; ++i) {
+      DerefScope scope;     
       Index_t ielem = regElemList[i];
       domain.p(ielem) = p_new.at(scope, i);
       domain.e(ielem) = e_new.at(scope, i);
@@ -2412,7 +2435,6 @@ void EvalEOSForElems(Domain& domain, far_memory::DataFrameVector<Real_t> & vnewc
 static inline
 void ApplyMaterialPropertiesForElems(Domain& domain)
 {
-   DerefScope scope;
    Index_t numElem = domain.numElem() ;
 
   if (numElem != 0) {
@@ -2424,9 +2446,10 @@ void ApplyMaterialPropertiesForElems(Domain& domain)
 
 #pragma omp parallel
     {
+   DerefScope scope;      
 #pragma omp for firstprivate(numElem)
        for(Index_t i=0 ; i<numElem ; ++i) {
-          vnewc.at_mut(scope, i) = domain.vnew(i) ;
+	 vnewc.at_mut(scope, i) = domain.vnew(i, scope) ;
        }
 
        // Bound the updated relative volumes with eosvmin/max
@@ -2500,7 +2523,8 @@ void UpdateVolumesForElems(Domain &domain,
    if (length != 0) {
 #pragma omp parallel for firstprivate(length, v_cut)
       for(Index_t i=0 ; i<length ; ++i) {
-         Real_t tmpV = domain.vnew(i) ;
+	DerefScope scope;
+	Real_t tmpV = domain.vnew(i, scope) ;
 
          if ( FABS(tmpV - Real_t(1.0)) < v_cut )
             tmpV = Real_t(1.0) ;

@@ -127,7 +127,7 @@ void Populate_dataframe_vector(size_t size, DataFrameVector<T> & dataframe_vecto
       DerefScope scope;
       dataframe_vector.push_back(scope, static_cast<T>(i));
   }
-  std::cout << " get_free_mem_ratio after Populate: " << far_mem_manager->get_free_mem_ratio() << "\n";
+//  std::cout << " get_free_mem_ratio after Populate: " << far_mem_manager->get_free_mem_ratio() << "\n";
 }
 
 template <typename T>
@@ -138,7 +138,7 @@ DataFrameVector<T> *AllocateFM(size_t size)
       DerefScope scope;
       dataframe_vector->push_back(scope, static_cast<T>(i));
   }
-  std::cout << " get_free_mem_ratio after allocation: " << far_mem_manager->get_free_mem_ratio() << "\n";
+  //std::cout << " get_free_mem_ratio after allocation: " << far_mem_manager->get_free_mem_ratio() << "\n";
   return dataframe_vector;
 }
 
@@ -152,11 +152,11 @@ void Release(T **ptr)
    }
 }
 
-#undef ReleaseFM
-#define ReleaseFM printf("Calling FunctionName from %s\n",__FUNCTION__);ReleaseFM_real
+//#undef ReleaseFM
+//#define ReleaseFM printf("Calling FunctionName from %s\n",__FUNCTION__);ReleaseFM_real
 
 template <typename T>
-void ReleaseFM_real(DataFrameVector<T> &dataframe_vector)
+void ReleaseFM(DataFrameVector<T> &dataframe_vector)
 {
     
     while(!dataframe_vector.empty())
@@ -164,7 +164,7 @@ void ReleaseFM_real(DataFrameVector<T> &dataframe_vector)
 	 DerefScope scope;
          dataframe_vector.pop_back(scope);
     }
-    std::cout << " get_free_mem_ratio after delete: " << far_mem_manager->get_free_mem_ratio() << "\n";
+  //  std::cout << " get_free_mem_ratio after delete: " << far_mem_manager->get_free_mem_ratio() << "\n";
 }
 
 //////////////////////////////////////////////////////
@@ -370,22 +370,22 @@ class Domain {
    Int_t&  elemBC(Index_t idx) { return m_elemBC[idx] ; }
 
    // Principal strains - temporary
-   Real_t& dxx(Index_t idx)  { DerefScope scope;  return m_dxx.at_mut(scope, idx) ; }
-   Real_t& dyy(Index_t idx)  { DerefScope scope;  return m_dyy.at_mut(scope, idx) ; }
-   Real_t& dzz(Index_t idx)  { DerefScope scope;  return m_dzz.at_mut(scope, idx) ; }
+   Real_t& dxx(Index_t idx, DerefScope &scope)  { return m_dxx.at_mut(scope, idx) ; }
+   Real_t& dyy(Index_t idx, DerefScope &scope)  { return m_dyy.at_mut(scope, idx) ; }
+   Real_t& dzz(Index_t idx, DerefScope &scope)  { return m_dzz.at_mut(scope, idx) ; }
 
    // New relative volume - temporary
-   Real_t& vnew(Index_t idx)  { DerefScope scope;  return m_vnew[idx] ; }
+   Real_t& vnew(Index_t idx, DerefScope &scope)  { return m_vnew[idx] ; }
 
    // Velocity gradient - temporary
-   Real_t& delv_xi(Index_t idx)    { DerefScope scope;  return m_delv_xi.at_mut(scope, idx) ; }
-   Real_t& delv_eta(Index_t idx)   { DerefScope scope;  return m_delv_eta.at_mut(scope, idx) ; }
-   Real_t& delv_zeta(Index_t idx)  { DerefScope scope;  return m_delv_zeta.at_mut(scope, idx) ; }
+   Real_t& delv_xi(Index_t idx, DerefScope &scope)    { return m_delv_xi.at_mut(scope, idx) ; }
+   Real_t& delv_eta(Index_t idx, DerefScope &scope)   { return m_delv_eta.at_mut(scope, idx) ; }
+   Real_t& delv_zeta(Index_t idx, DerefScope &scope)  { return m_delv_zeta.at_mut(scope, idx) ; }
 
    // Position gradient - temporary
-   Real_t& delx_xi(Index_t idx)    { DerefScope scope;  return m_delx_xi.at_mut(scope, idx) ; }
-   Real_t& delx_eta(Index_t idx)   { DerefScope scope;  return m_delx_eta.at_mut(scope, idx) ; }
-   Real_t& delx_zeta(Index_t idx)  { DerefScope scope;  return m_delx_zeta.at_mut(scope, idx) ; }
+   Real_t& delx_xi(Index_t idx, DerefScope &scope)    { return m_delx_xi.at_mut(scope, idx) ; }
+   Real_t& delx_eta(Index_t idx, DerefScope &scope)   { return m_delx_eta.at_mut(scope, idx) ; }
+   Real_t& delx_zeta(Index_t idx, DerefScope &scope)  { return m_delx_zeta.at_mut(scope, idx) ; }
 
    // Energy
    Real_t& e(Index_t idx)          { return m_e[idx] ; }
